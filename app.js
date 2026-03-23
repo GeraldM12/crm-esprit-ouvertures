@@ -1,7 +1,7 @@
 // ===== DATA =====
 const PRODUCTS=['Porte d\'entrée','Fenêtre','Volet roulant','Volet battant','Porte de garage','Pergola / véranda','VELUX','Portail','Portillon','Clôture','Autre'];
 const STATUTS=['Prospect','À relancer','Devis envoyé','Signé','Perdu'];
-const CALL_RESULTS=['Contacté — intéressé','Contacté — pas intéressé','Messagerie','Rappel demandé','Pas répondu']7
+const CALL_RESULTS=['Contacté — intéressé','Contacté — pas intéressé','Messagerie','Rappel demandé','Pas répondu'];
 const TODAY=new Date().toISOString().split('T')[0];
 
 function loadData(){
@@ -53,7 +53,7 @@ function nextId(arr){return Math.max(...arr.map(x=>x.id),0)+1}
 function showTab(t){
   currentTab=t;
   document.querySelectorAll('.nav button:not(.scan-btn)').forEach((b,i)=>b.classList.toggle('active',['dashboard','clients','prospection','relances','export'][i]===t));
-  document.querySelector('.scan-btn').classList.toggle('active',d==='scanner');
+  document.querySelector('.scan-btn').classList.toggle('active',t==='scanner');
   if(t==='scanner'){scanPhase='scan';scanImageB64=null;scanPreviewUrl=null;}
   render();
 }
