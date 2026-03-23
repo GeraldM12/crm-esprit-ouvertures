@@ -8,6 +8,8 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <title>Esprit d'Ouvertures — CRM</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     /* ===== VARIABLES ===== */
     :root {
@@ -492,6 +494,46 @@
     .detail-row-value { color: var(--text); word-break: break-word; }
     .detail-notes { background: var(--surface2); border-radius: var(--radius-sm); padding: 12px; font-size: 13px; line-height: 1.6; color: var(--text-muted); min-height: 60px; }
 
+    /* ===== PROSPECTION GPS ===== */
+    #map { width: 100%; height: 420px; border-radius: var(--radius); border: 1px solid rgba(255,255,255,0.08); }
+    .prospect-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+    .session-info { display: flex; gap: 20px; flex-wrap: wrap; }
+    .session-stat { background: var(--surface); border-radius: var(--radius-sm); padding: 10px 18px; text-align: center; border: 1px solid rgba(255,255,255,0.06); }
+    .session-stat-val { font-size: 22px; font-weight: 700; color: var(--gold); }
+    .session-stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .btn-record { background: var(--green); color: var(--navy); }
+    .btn-record:hover { background: #2aad6a; }
+    .btn-stop { background: var(--red); color: white; }
+    .btn-stop:hover { background: #cc3333; }
+    .sessions-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .session-item { background: var(--surface); border-radius: var(--radius-sm); padding: 12px 16px; border: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 12px; cursor: pointer; transition: var(--transition); }
+    .session-item:hover { border-color: rgba(232,168,56,0.3); }
+    .session-item-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .session-item-info { flex: 1; }
+    .session-item-title { font-size: 13px; font-weight: 600; }
+    .session-item-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .map-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+    .map-legend span { display: flex; align-items: center; gap: 6px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    /* ===== CAPTURE IA ===== */
+    .camera-area { border: 2px dashed rgba(232,168,56,0.3); border-radius: var(--radius); padding: 20px; text-align: center; cursor: pointer; transition: var(--transition); margin-bottom: 16px; }
+    .camera-area:hover { border-color: var(--gold); background: rgba(232,168,56,0.05); }
+    #capturePreview { max-width: 100%; max-height: 200px; border-radius: var(--radius-sm); display: none; margin: 12px auto 0; }
+    .ai-status { background: var(--surface2); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; color: var(--text-muted); display: none; align-items: center; gap: 8px; }
+    .ai-status.show { display: flex; }
+    .spinner { width: 14px; height: 14px; border: 2px solid rgba(232,168,56,0.3); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== PARAMÈTRES ===== */
+    .settings-section { background: var(--surface); border-radius: var(--radius); padding: 24px; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 16px; }
+    .settings-section-title { font-size: 14px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; gap: 12px; }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-row-label { color: var(--text-muted); flex-shrink: 0; }
+    .api-key-input { background: var(--surface2); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--text); font-size: 13px; outline: none; flex: 1; font-family: monospace; transition: var(--transition); }
+    .api-key-input:focus { border-color: var(--gold); }
+
     /* Responsive */
     @media (max-width: 600px) {
       .sidebar { width: 56px; }
@@ -522,6 +564,14 @@
     <button class="nav-btn" data-page="agenda" onclick="nav('agenda')">
       📅
       <span class="tooltip">Agenda</span>
+    </button>
+    <button class="nav-btn" data-page="prospection" onclick="nav('prospection')">
+      🗺️
+      <span class="tooltip">Prospection GPS</span>
+    </button>
+    <button class="nav-btn" data-page="settings" onclick="nav('settings')" style="margin-top:auto">
+      ⚙️
+      <span class="tooltip">Paramètres</span>
     </button>
   </nav>
 
@@ -568,13 +618,43 @@
 
       <!-- ========== CONTACTS ========== -->
       <div class="page" id="page-contacts">
-        <input type="text" class="search-bar" id="contactSearch" placeholder="🔍 Rechercher un contact..." oninput="filterContacts()">
+        <div style="display:flex;gap:10px;margin-bottom:4px;flex-wrap:wrap">
+          <input type="text" class="search-bar" id="contactSearch" placeholder="🔍 Rechercher un contact..." oninput="filterContacts()" style="margin-bottom:0;flex:1;min-width:200px">
+          <button class="btn btn-ghost" onclick="openCaptureModal()" style="white-space:nowrap">📷 Capturer feuille</button>
+        </div>
+        <div style="margin-bottom:12px"></div>
         <div class="contacts-grid" id="contactsGrid"></div>
       </div>
 
       <!-- ========== PROSPECTS ========== -->
       <div class="page" id="page-prospects">
         <div class="pipeline-wrap" id="pipelineWrap"></div>
+      </div>
+
+      <!-- ========== PROSPECTION GPS ========== -->
+      <div class="page" id="page-prospection">
+        <div class="prospect-controls">
+          <button class="btn btn-record" id="btnStart" onclick="startSession()">▶ Démarrer session</button>
+          <button class="btn btn-stop" id="btnStop" onclick="stopSession()" style="display:none">⏹ Arrêter</button>
+          <div class="session-info" id="sessionInfo" style="display:none">
+            <div class="session-stat"><div class="session-stat-val" id="statDur">0:00</div><div class="session-stat-label">Durée</div></div>
+            <div class="session-stat"><div class="session-stat-val" id="statDist">0 m</div><div class="session-stat-label">Distance</div></div>
+            <div class="session-stat"><div class="session-stat-val" id="statPts">0</div><div class="session-stat-label">Points GPS</div></div>
+          </div>
+        </div>
+        <div id="map"></div>
+        <div class="map-legend">
+          <span><span class="legend-dot" style="background:#4a9eff"></span>Session en cours</span>
+          <span><span class="legend-dot" style="background:#e85555"></span>Sessions précédentes</span>
+          <span><span class="legend-dot" style="background:#38c57e"></span>Départ</span>
+        </div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <span class="card-title">Historique des sessions</span>
+            <span style="font-size:12px;color:var(--text-muted)" id="sessionCount"></span>
+          </div>
+          <div id="sessionsList" class="sessions-list"></div>
+        </div>
       </div>
 
       <!-- ========== AGENDA ========== -->
@@ -587,6 +667,45 @@
               <button class="btn btn-primary btn-sm" onclick="openEventModal()">+ RDV</button>
             </div>
             <div id="eventsList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== PARAMÈTRES ========== -->
+      <div class="page" id="page-settings">
+        <div class="settings-section">
+          <div class="settings-section-title">🤖 Intelligence artificielle</div>
+          <div class="settings-row">
+            <span class="settings-row-label">Clé API Claude (Anthropic)</span>
+            <input type="password" class="api-key-input" id="claudeApiKey" placeholder="sk-ant-api03-..." autocomplete="off">
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:8px">
+            Utilisée pour la reconnaissance de feuilles contact manuscrites.<br>
+            Obtenez votre clé sur <a href="https://console.anthropic.com" target="_blank" style="color:var(--gold)">console.anthropic.com</a> (compte gratuit disponible).
+          </div>
+          <div style="margin-top:16px;display:flex;gap:10px">
+            <button class="btn btn-primary" onclick="saveSettings()">💾 Enregistrer</button>
+            <button class="btn btn-ghost" onclick="testApiKey()">🧪 Tester la clé</button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">👤 Informations commercial</div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Prénom</label><input type="text" class="form-input" id="settingFirst" placeholder="Gérald"></div>
+            <div class="form-group"><label class="form-label">Nom</label><input type="text" class="form-input" id="settingLast" placeholder="Moyer"></div>
+          </div>
+          <div class="form-group"><label class="form-label">Entreprise</label><input type="text" class="form-input" id="settingCompany" value="Esprit d'Ouvertures"></div>
+          <button class="btn btn-primary" onclick="saveSettings()">💾 Enregistrer</button>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">🗄️ Données</div>
+          <div class="settings-row">
+            <span class="settings-row-label">Exporter toutes les données</span>
+            <button class="btn btn-ghost btn-sm" onclick="exportData()">📥 Export JSON</button>
+          </div>
+          <div class="settings-row">
+            <span class="settings-row-label">Réinitialiser l'application</span>
+            <button class="btn btn-danger btn-sm" onclick="resetData()">🗑 Effacer tout</button>
           </div>
         </div>
       </div>
@@ -742,6 +861,45 @@
   </div>
 </div>
 
+<!-- ===== MODAL CAPTURE IA ===== -->
+<div class="modal-overlay hidden" id="captureModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title">📷 Capturer une feuille contact</span>
+      <button class="modal-close" onclick="closeModal('captureModal')">×</button>
+    </div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Prenez en photo votre feuille contact manuscrite. L'IA va extraire automatiquement les informations.</p>
+    <div class="camera-area" onclick="document.getElementById('captureInput').click()">
+      <div style="font-size:36px">📷</div>
+      <div style="margin-top:8px;font-size:13px;color:var(--text-muted)">Appuyez pour prendre une photo ou choisir une image</div>
+      <img id="capturePreview" alt="Aperçu">
+    </div>
+    <input type="file" id="captureInput" accept="image/*" capture="environment" style="display:none" onchange="onCaptureFile(event)">
+    <div class="ai-status" id="aiStatus">
+      <div class="spinner"></div>
+      <span id="aiStatusText">Analyse en cours...</span>
+    </div>
+    <div id="captureResult" style="display:none">
+      <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Informations détectées</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Prénom</label><input type="text" class="form-input" id="cap_first"></div>
+        <div class="form-group"><label class="form-label">Nom</label><input type="text" class="form-input" id="cap_last"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Adresse</label><input type="text" class="form-input" id="cap_address"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Téléphone</label><input type="text" class="form-input" id="cap_phone"></div>
+        <div class="form-group"><label class="form-label">Email</label><input type="text" class="form-input" id="cap_email"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Intérêt produit</label><input type="text" class="form-input" id="cap_interest" placeholder="Porte d'entrée, Fenêtres..."></div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="cap_notes" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeModal('captureModal')">Annuler</button>
+      <button type="button" class="btn btn-primary" id="btnCreateFromCapture" style="display:none" onclick="createContactFromCapture()">✅ Créer le contact</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== DETAIL PANEL ===== -->
 <div class="detail-overlay hidden" id="detailOverlay" onclick="closeDetail(event)">
   <div class="detail-panel" id="detailPanel"></div>
@@ -795,6 +953,7 @@ function topAdd() {
   if (currentPage === 'contacts') openContactModal();
   else if (currentPage === 'prospects') openProspectModal();
   else if (currentPage === 'agenda') openEventModal();
+  else if (currentPage === 'prospection') startSession();
   else nav('contacts');
 }
 
@@ -919,6 +1078,16 @@ const render = {
   agenda() {
     renderCalendar();
     renderEvents();
+  },
+  prospection() {
+    setTimeout(() => {
+      initMap();
+      renderSessionsList();
+      renderSessionsOnMap();
+    }, 100);
+  },
+  settings() {
+    loadSettings();
   }
 };
 
@@ -1253,7 +1422,7 @@ function selectDate(iso) {
 
 function renderEvents() {
   const iso = selectedDate.toISOString().slice(0,10);
-  const months = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const months = ['janvier','février','mars','avril','mai','Juin','juillet','août','septembre','octobre','novembre','décembre'];
   document.getElementById('selectedDateLabel').textContent =
     `${selectedDate.getDate()} ${months[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`;
 
@@ -1351,6 +1520,322 @@ function timeAgo(ts) {
   if (diff < 3600000) return Math.floor(diff/60000) + ' min';
   if (diff < 86400000) return Math.floor(diff/3600000) + 'h';
   return Math.floor(diff/86400000) + 'j';
+}
+
+/* ========================================================
+   PROSPECTION GPS
+======================================================== */
+let gpsMap = null, gpsWatch = null, currentTrack = [], currentPolyline = null;
+let sessionStart = null, sessionTimer = null, prevPolylines = [];
+
+function initMap() {
+  if (gpsMap) return;
+  gpsMap = L.map('map').setView([46.6, 2.3], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19
+  }).addTo(gpsMap);
+  renderSessionsOnMap();
+}
+
+function startSession() {
+  if (!navigator.geolocation) { toast('GPS non disponible sur cet appareil', 'error'); return; }
+  currentTrack = [];
+  sessionStart = Date.now();
+  document.getElementById('btnStart').style.display = 'none';
+  document.getElementById('btnStop').style.display = 'inline-flex';
+  document.getElementById('sessionInfo').style.display = 'flex';
+  sessionTimer = setInterval(updateSessionStats, 1000);
+  gpsWatch = navigator.geolocation.watchPosition(
+    pos => {
+      const latlng = [pos.coords.latitude, pos.coords.longitude];
+      currentTrack.push(latlng);
+      if (!currentPolyline) {
+        currentPolyline = L.polyline([latlng], { color: '#4a9eff', weight: 4, opacity: 0.9 }).addTo(gpsMap);
+        L.circleMarker(latlng, { radius: 8, color: '#38c57e', fillColor: '#38c57e', fillOpacity: 1 }).addTo(gpsMap).bindPopup('Départ de session');
+      } else { currentPolyline.addLatLng(latlng); }
+      gpsMap.setView(latlng, Math.max(gpsMap.getZoom(), 16));
+      document.getElementById('statPts').textContent = currentTrack.length;
+    },
+    err => toast('Erreur GPS : ' + err.message, 'error'),
+    { enableHighAccuracy: true, maximumAge: 5000 }
+  );
+  toast('Session de prospection démarrée', 'success');
+}
+
+function stopSession() {
+  if (gpsWatch) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; }
+  clearInterval(sessionTimer);
+  document.getElementById('btnStart').style.display = 'inline-flex';
+  document.getElementById('btnStop').style.display = 'none';
+  document.getElementById('sessionInfo').style.display = 'none';
+  if (currentTrack.length < 2) { toast('Session trop courte (pas assez de points GPS)', 'error'); currentPolyline = null; currentTrack = []; return; }
+  // Save session
+  const sessions = DB.get('eo_sessions', []);
+  const dur = Date.now() - sessionStart;
+  const dist = calcDistance(currentTrack);
+  const session = { id: uid(), ts: sessionStart, dur, dist, track: currentTrack };
+  sessions.unshift(session);
+  DB.set('eo_sessions', sessions);
+  // Auto-add to calendar
+  addSessionToCalendar(session);
+  currentPolyline = null; currentTrack = [];
+  renderSessionsList();
+  renderSessionsOnMap();
+  toast('Session enregistrée ! Ajoutée à l\'agenda.', 'success');
+}
+
+function updateSessionStats() {
+  const elapsed = Date.now() - sessionStart;
+  const m = Math.floor(elapsed / 60000);
+  const s = Math.floor((elapsed % 60000) / 1000);
+  document.getElementById('statDur').textContent = m + ':' + String(s).padStart(2,'0');
+  if (currentTrack.length > 1) {
+    const d = calcDistance(currentTrack);
+    document.getElementById('statDist').textContent = d >= 1000 ? (d/1000).toFixed(1)+' km' : Math.round(d)+' m';
+  }
+}
+
+function calcDistance(track) {
+  let d = 0;
+  for (let i = 1; i < track.length; i++) {
+    const [lat1,lon1] = track[i-1], [lat2,lon2] = track[i];
+    const R = 6371000, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    d += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+  return d;
+}
+
+async function addSessionToCalendar(session) {
+  const date = new Date(session.ts);
+  const iso = date.toISOString().slice(0,10);
+  const time = date.toTimeString().slice(0,5);
+  let zone = '';
+  if (session.track.length > 0) {
+    try {
+      const [lat, lon] = session.track[Math.floor(session.track.length/2)];
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+      const d = await r.json();
+      zone = d.address?.city || d.address?.town || d.address?.village || d.address?.suburb || '';
+    } catch {}
+  }
+  const dist = session.dist >= 1000 ? (session.dist/1000).toFixed(1)+' km' : Math.round(session.dist)+' m';
+  const ev = { id: uid(), title: '🗺️ Prospection' + (zone ? ' — ' + zone : ''), date: iso, time, contact: '', notes: `Distance : ${dist}\nPoints GPS : ${session.track.length}` };
+  events.push(ev);
+  save();
+}
+
+function renderSessionsOnMap() {
+  if (!gpsMap) return;
+  prevPolylines.forEach(p => gpsMap.removeLayer(p));
+  prevPolylines = [];
+  const sessions = DB.get('eo_sessions', []);
+  const colors = ['#e85555','#ff8c42','#a855f7','#e8a838'];
+  sessions.slice(0,10).forEach((s, i) => {
+    if (s.track.length < 2) return;
+    const pl = L.polyline(s.track, { color: colors[i % colors.length], weight: 3, opacity: 0.65 }).addTo(gpsMap);
+    pl.bindPopup(`Session du ${new Date(s.ts).toLocaleDateString('fr-FR')}`);
+    prevPolylines.push(pl);
+  });
+  if (sessions.length > 0 && sessions[0].track.length > 0) {
+    gpsMap.fitBounds(L.polyline(sessions[0].track).getBounds(), { padding: [30,30] });
+  }
+}
+
+function renderSessionsList() {
+  const sessions = DB.get('eo_sessions', []);
+  document.getElementById('sessionCount').textContent = sessions.length + ' session(s)';
+  if (!sessions.length) {
+    document.getElementById('sessionsList').innerHTML = '<div class="empty-state"><div class="icon">🗺️</div><p>Aucune session enregistrée</p></div>';
+    return;
+  }
+  const colors = ['#e85555','#ff8c42','#a855f7','#e8a838'];
+  document.getElementById('sessionsList').innerHTML = sessions.map((s, i) => {
+    const dist = s.dist >= 1000 ? (s.dist/1000).toFixed(1)+' km' : Math.round(s.dist)+' m';
+    const dur = Math.floor(s.dur/60000) + ' min';
+    const date = new Date(s.ts).toLocaleDateString('fr-FR', { weekday:'short', day:'numeric', month:'short' });
+    const time = new Date(s.ts).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+    return `<div class="session-item" onclick="focusSession(${i})">
+      <div class="session-item-dot" style="background:${colors[i % colors.length]}"></div>
+      <div class="session-item-info">
+        <div class="session-item-title">${date} à ${time}</div>
+        <div class="session-item-meta">📍 ${dist} parcouru · ⏱ ${dur} · ${s.track.length} pts GPS</div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteSession('${s.id}')">🗑</button>
+    </div>`;
+  }).join('');
+}
+
+function focusSession(i) {
+  const sessions = DB.get('eo_sessions', []);
+  const s = sessions[i];
+  if (s && s.track.length > 1 && gpsMap) {
+    gpsMap.fitBounds(L.polyline(s.track).getBounds(), { padding: [40,40] });
+  }
+}
+
+function deleteSession(id) {
+  if (!confirm('Supprimer cette session ?')) return;
+  let sessions = DB.get('eo_sessions', []);
+  sessions = sessions.filter(s => s.id !== id);
+  DB.set('eo_sessions', sessions);
+  renderSessionsList();
+  renderSessionsOnMap();
+  toast('Session supprimée', 'success');
+}
+
+/* ========================================================
+   CAPTURE IA (FEUILLE CONTACT)
+======================================================== */
+function openCaptureModal() {
+  document.getElementById('capturePreview').style.display = 'none';
+  document.getElementById('captureResult').style.display = 'none';
+  document.getElementById('btnCreateFromCapture').style.display = 'none';
+  document.getElementById('aiStatus').classList.remove('show');
+  document.getElementById('captureInput').value = '';
+  document.getElementById('captureModal').classList.remove('hidden');
+}
+
+function onCaptureFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const dataUrl = e.target.result;
+    const preview = document.getElementById('capturePreview');
+    preview.src = dataUrl; preview.style.display = 'block';
+    await analyzeContactSheet(dataUrl);
+  };
+  reader.readAsDataURL(file);
+}
+
+async function analyzeContactSheet(dataUrl) {
+  const apiKey = DB.get('eo_settings', {}).claudeApiKey || '';
+  if (!apiKey) {
+    toast('Clé API Claude manquante — configurez-la dans Paramètres', 'error');
+    return;
+  }
+  const aiStatus = document.getElementById('aiStatus');
+  document.getElementById('aiStatusText').textContent = 'Analyse IA en cours...';
+  aiStatus.classList.add('show');
+  const base64 = dataUrl.split(',')[1];
+  const mediaType = dataUrl.split(';')[0].split(':')[1];
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: 'Extrait les informations de cette feuille contact manuscrite. Réponds UNIQUEMENT en JSON avec ces champs : {"prenom":"","nom":"","adresse":"","telephone":"","email":"","interet":"","notes":""}. Si un champ est illisible ou absent, laisse-le vide. Pour "interet" mets le type de produit souhaité (porte, fenêtre, volet, etc).' }
+          ]
+        }]
+      })
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+    const text = data.content[0].text.trim();
+    const json = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+    document.getElementById('cap_first').value = json.prenom || '';
+    document.getElementById('cap_last').value = json.nom || '';
+    document.getElementById('cap_address').value = json.adresse || '';
+    document.getElementById('cap_phone').value = json.telephone || '';
+    document.getElementById('cap_email').value = json.email || '';
+    document.getElementById('cap_interest').value = json.interet || '';
+    document.getElementById('cap_notes').value = json.notes || '';
+    document.getElementById('captureResult').style.display = 'block';
+    document.getElementById('btnCreateFromCapture').style.display = 'inline-flex';
+    aiStatus.classList.remove('show');
+    toast('Feuille analysée avec succès !', 'success');
+  } catch(err) {
+    aiStatus.classList.remove('show');
+    toast('Erreur IA : ' + err.message, 'error');
+  }
+}
+
+function createContactFromCapture() {
+  const first = document.getElementById('cap_first').value.trim();
+  const last = document.getElementById('cap_last').value.trim();
+  if (!first && !last) { toast('Prénom ou nom requis', 'error'); return; }
+  const interest = document.getElementById('cap_interest').value.trim();
+  const notes = [document.getElementById('cap_notes').value.trim(), interest ? 'Intérêt : ' + interest : ''].filter(Boolean).join('\n');
+  const data = {
+    id: uid(), first: first || '—', last: last || '—',
+    company: document.getElementById('cap_address').value.trim(),
+    email: document.getElementById('cap_email').value.trim(),
+    phone: document.getElementById('cap_phone').value.trim(),
+    category: 'prospect', notes, created: Date.now()
+  };
+  contacts.unshift(data);
+  DB.log('Contact capturé par IA : ' + data.first + ' ' + data.last);
+  save();
+  closeModal('captureModal');
+  filterContacts();
+  toast('Contact créé depuis la feuille !', 'success');
+}
+
+/* ========================================================
+   PARAMÈTRES
+======================================================== */
+function loadSettings() {
+  const s = DB.get('eo_settings', {});
+  if (s.claudeApiKey) document.getElementById('claudeApiKey').value = s.claudeApiKey;
+  if (s.first) document.getElementById('settingFirst').value = s.first;
+  if (s.last) document.getElementById('settingLast').value = s.last;
+  if (s.company) document.getElementById('settingCompany').value = s.company;
+}
+
+function saveSettings() {
+  const s = {
+    claudeApiKey: document.getElementById('claudeApiKey').value.trim(),
+    first: document.getElementById('settingFirst').value.trim(),
+    last: document.getElementById('settingLast').value.trim(),
+    company: document.getElementById('settingCompany').value.trim(),
+  };
+  DB.set('eo_settings', s);
+  toast('Paramètres enregistrés', 'success');
+}
+
+async function testApiKey() {
+  const key = document.getElementById('claudeApiKey').value.trim();
+  if (!key) { toast('Entrez d\'abord une clé API', 'error'); return; }
+  toast('Test en cours...', 'success');
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 10, messages: [{role:'user', content:'Dis OK'}] })
+    });
+    const d = await r.json();
+    if (d.content) toast('✅ Clé API valide !', 'success');
+    else toast('Clé invalide : ' + (d.error?.message || 'Erreur'), 'error');
+  } catch(e) { toast('Erreur réseau : ' + e.message, 'error'); }
+}
+
+function exportData() {
+  const data = {
+    contacts: DB.get('eo_contacts', []),
+    prospects: DB.get('eo_prospects', []),
+    events: DB.get('eo_events', []),
+    sessions: DB.get('eo_sessions', [])
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'crm-esprit-export-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+
+function resetData() {
+  if (!confirm('⚠️ Effacer TOUTES les données ? Cette action est irréversible.')) return;
+  ['eo_contacts','eo_prospects','eo_events','eo_sessions','eo_logs'].forEach(k => localStorage.removeItem(k));
+  contacts = []; prospects = []; events = [];
+  render.dashboard();
+  toast('Données effacées', 'success');
 }
 
 /* ========================================================
