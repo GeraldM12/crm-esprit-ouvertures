@@ -119,8 +119,24 @@ function renderScanner(){
 }
 function scanSteps(a){return`<div class="steps">${['1 · Scanner','2 · Analyse IA','3 · Vérifier','4 · Créé'].map((s,i)=>`<div class="step ${i+1<a?'done':i+1===a?'active':''}">${s}</div>`).join('')}</div>`;}
 
-function renderScanPhase(){return`<div style="max-width:480px;margin:0 auto">
+function getApiKey(){return localStorage.getItem('crm_api_key')||'';}
+function saveApiKey(k){if(k)localStorage.setItem('crm_api_key',k.trim());else localStorage.removeItem('crm_api_key');}
+
+function renderScanPhase(){
+  const hasKey=!!getApiKey();
+  return`<div style="max-width:480px;margin:0 auto">
   ${scanSteps(1)}
+  ${!hasKey?`<div style="background:#FFF3CD;border:1px solid #FFC107;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px">
+    <b>🔑 Clé API requise</b><br>Pour activer la reconnaissance IA (manuscrit, carte de visite…), entrez votre clé API Anthropic ci-dessous.
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="api-key-input" type="password" placeholder="sk-ant-api03-..." style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #ccc;font-size:13px">
+      <button class="btn btn-g btn-sm" onclick="const k=document.getElementById('api-key-input').value;saveApiKey(k);if(k){toast('Clé enregistrée ✓');render();}else toast('Clé vide')">Enregistrer</button>
+    </div>
+    <div style="font-size:11px;color:#666;margin-top:6px">Obtenez une clé sur <b>console.anthropic.com</b> — stockée localement sur votre appareil uniquement.</div>
+  </div>`:`<div style="display:flex;align-items:center;justify-content:space-between;background:var(--green-light);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--green)">
+    <span>✓ Clé API configurée — reconnaissance IA active</span>
+    <button class="btn btn-o btn-sm" onclick="saveApiKey('');toast('Clé supprimée');render()">Supprimer</button>
+  </div>`}
   <div class="scan-zone" onclick="document.getElementById('scan-input').click()">
     <div class="scan-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="var(--green)" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="var(--green)" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="var(--green)" stroke-width="1.5"/><path d="M14 14h2v2h-2zM18 14h3M14 18v3M18 18h3v3h-3z" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <div style="font-size:14px;font-weight:700;margin-bottom:4px">Scanner une fiche contact</div>
@@ -216,16 +232,23 @@ async function startAIAnalysis(isDemo){
   const interval=setInterval(()=>{ri=(ri+1)%rotating.length;const el=document.getElementById('ai-msg');if(el)el.textContent=rotating[ri];},1100);
 
   try{
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,messages:msgs})});
+    const apiKey=getApiKey();
+    if(!apiKey&&!isDemo){clearInterval(interval);scanPhase='scan';render();toast('Entrez votre clé API Anthropic pour activer la reconnaissance');return;}
+    const headers={'Content-Type':'application/json','anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
+    if(apiKey)headers['x-api-key']=apiKey;
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers,body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:600,messages:msgs})});
     clearInterval(interval);
     const data=await resp.json();
-    const raw=data.content?.filter(b=>b.type==='text').map(b=>b.text).join('')||'{}';
-    try{scanData=JSON.parse(raw.replace(/```json|```/g,'').trim());}
-    catch{scanData={prenom:'',nom:'',adresse:'',cp:'77390',ville:'Guignes',tel:'',email:'',notes:'',confidence:{}};}
+    if(data.error){toast('Erreur API : '+data.error.message);scanData={prenom:'',nom:'',adresse:'',cp:'77390',ville:'Guignes',tel:'',email:'',notes:'',confidence:{}};}
+    else{
+      const raw=data.content?.filter(b=>b.type==='text').map(b=>b.text).join('')||'{}';
+      try{scanData=JSON.parse(raw.replace(/```json|```/g,'').trim());}
+      catch{scanData={prenom:'',nom:'',adresse:'',cp:'77390',ville:'Guignes',tel:'',email:'',notes:'',confidence:{}};}
+    }
   }catch(err){
     clearInterval(interval);
     scanData={prenom:'',nom:'',adresse:'',cp:'77390',ville:'Guignes',tel:'',email:'',notes:'',confidence:{}};
-    toast('Connexion impossible — remplissez manuellement');
+    toast('Connexion impossible — vérifiez votre clé API');
   }
   scanPhase='verify';render();
 }
@@ -308,7 +331,7 @@ function renderDetail(c){
       <button class="btn btn-o btn-sm" onclick="addAppel(${c.id})">+ Appel</button>
     </div>
     <div>${c.appels.length===0?`<div style="font-size:11px;color:var(--text-m)">Aucun appel enregistré</div>`:
-    c.appels.map(a=>`<div class="call-item"><div class="ci-i ${a.resultat.includes('intéressé')?'ci-green':a.resultat.includes('Messagerie')||a.resultat.includes('répondu')?'ci-gray':'ci-amber'}"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1.5 2C1.5 2 2.5 3.5 3.5 4.5S5.5 6.5 5.5 6.5l1-1 2 2-1.5 1.5C5.5 10 2.5 8.5 1.5 7.5S0 4.5 1 3L1.5 2z" fill="currentColor" opacity=".7"/></svg></div><div style="flex:1"><div style="font-size:11px;font-weight:600">${a.resultat}</div><div style="font-size:10px;color:var(--text-m)">${a.date} ${a.heure}${a.note?' — '+a.note:''}</div></div></div>`).join('')}</div>
+    c.appels.map(a=>`<div class="call-item"><div class="ci-i ${a.resultat.includes('intéressé')?'ci-green':a.resultat.includes('Messagerie')||a.resultat.includes('pépondu')?'ci-gray':'ci-amber'}"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1.5 2C1.5 2 2.5 3.5 3.5 4.5S5.5 6.5 5.5 6.5l1-1 2 2-1.5 1.5C5.5 10 2.5 8.5 1.5 7.5S0 4.5 1 3L1.5 2z" fill="currentColor" opacity=".7"/></svg></div><div style="flex:1"><div style="font-size:11px;font-weight:600">${a.resultat}</div><div style="font-size:10px;color:var(--text-m)">${a.date} ${a.heure}${a.note?' — '+a.note:''}</div></div></div>`).join('')}</div>
   </div>
   <div class="debrief-block" style="margin-bottom:9px">
     <div style="font-size:11px;font-weight:600;color:var(--text-m);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Débrief RDV (Plaud Note)</div>
@@ -395,7 +418,7 @@ function drawMap(){
   function xy(lat,lng){return{x:((lng-minLng)/(maxLng-minLng))*(W*0.85)+W*0.075,y:(1-(lat-minLat)/(maxLat-minLat))*(H*0.82)+H*0.09}}
   ctx.strokeStyle=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.07)';ctx.lineWidth=0.5;
   for(let i=0;i<=4;i++){const y=H*0.09+i*(H*0.82/4);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
-  zones.forEach(z=>{const p=xy(z.lat,z.lng),r=14+z.visites*1.5;ctx.globalAlpha=0.15;ctx.fillStyle='#1D9E75';ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.strokeStyle='#1D9E75';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.stroke();ctx.fillStyle=isDark?'#9a9a96':'#6b6b67';ctx.font='10px -apple-system,sans-serif';ctx.textAlign='center';ctx.fillText(z.nom.length>12?z.nom.slice(0,11)+'…':z.nom,p.x,p.y+r+11);ctx.fillText(new Date(z.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'}),p.x,p.y+r+21);});
+  zones.forEach(z=>{const p=xy(z.lat,z.lng),r=14+z.visites*1.5;ctx.globalAlpha=0.15;ctx.fillStyle='#1D9E75';ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.strokeStyle='#1D9E75';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.stroke();ctx.fillStyle=isDark?'#9a9a96':'#6f6b67';ctx.font='10px -apple-system,sans-serif';ctx.textAlign='center';ctx.fillText(z.nom.length>12?z.nom.slice(0,11)+'…':z.nom,p.x,p.y+r+11);ctx.fillText(new Date(z.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'}),p.x,p.y+r+21);});
   clients.forEach(c=>{if(!c.lat)return;const p=xy(c.lat,c.lng);ctx.globalAlpha=1;ctx.fillStyle='#378ADD';ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(p.x,p.y,2,0,Math.PI*2);ctx.fill();});
   if(currentPos){const p=xy(currentPos.lat,currentPos.lng);ctx.globalAlpha=0.2;ctx.fillStyle='#E24B4A';ctx.beginPath();ctx.arc(p.x,p.y,18,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.fillStyle='#E24B4A';ctx.beginPath();ctx.arc(p.x,p.y,6,0,Math.PI*2);ctx.fill();}
 }
@@ -430,7 +453,7 @@ function saveDebrief(id){const c=clients.find(c=>c.id===id);c.debrief=document.g
 function addProd(id){showModal(`<div class="mt">Ajouter un produit</div><div class="ff"><label>Produit</label><select id="pp">${PRODUCTS.map(p=>`<option>${p}</option>`).join('')}</select></div><div class="ff"><label>Quantité</label><input type="number" id="pq" value="1" min="1"></div><div class="ma"><button class="btn btn-o" onclick="closeModal()">Annuler</button><button class="btn btn-g" onclick="saveProd(${id})">Ajouter</button></div>`);}
 function saveProd(id){const c=clients.find(c=>c.id===id);c.produits.push({nom:document.getElementById('pp').value,qty:parseInt(document.getElementById('pq').value)||1});saveData();closeModal();render();}
 
-function addHisto(id){showModal(`<div class="mt">Ajouter une entrée</div><div class="ff"><label>Note</label><textarea id="hn" style="width:100%;font-family:inherit;font-size:12px;padding:7px;border-radius:8px;border:0.5px solid var(--bdr-md);background:var(--bg-card);color:var(--text);min-height:80px"></textarea></div><div class="ma"><button class="btn btn-o" onclick="closeModal()">Annuler</button><button class="btn btn-g" onclick="saveHisto(${id})">OK</button></div>`);}
+function addHisto(id){showModal(`<div class="mt">Ajouter une entrée</div><div class="ff"><label>Note</label><textarea id="hn" style="width:100%;font-family:inherit;font-size:12px;padding:7px;border-radius:8px;border:0.5px solid var(--bdr-md);background:var(--bg-card);color:var(--text);min-height:80px"></textarea></div><div class="ma"><button class="btn btn-o" onclick="closeModal()">Annuler</button><button class="btn btn-g" onclick="saveHisto(${id})">OL</button></div>`);}
 function saveHisto(id){const c=clients.find(c=>c.id===id);const n=document.getElementById('hn').value;if(c&&n.trim()){c.historique.push({date:new Date().toLocaleDateString('fr-FR'),texte:n});saveData();closeModal();render();}}
 
 function openNew(){showModal(`<div class="mt">Nouveau client</div><div class="g2"><div class="ff"><label>Prénom</label><input id="fp"></div><div class="ff"><label>Nom</label><input id="fn"></div></div><div class="ff"><label>Adresse</label><input id="fa"></div><div class="g2"><div class="ff"><label>CP</label><input id="fc" value="77390"></div><div class="ff"><label>Ville</label><input id="fv" value="Guignes"></div></div><div class="g2"><div class="ff"><label>Tél</label><input id="ft"></div><div class="ff"><label>Email</label><input id="fe"></div></div><div class="ff"><label>Statut</label><select id="fs">${STATUTS.map(s=>`<option>${s}</option>`).join('')}</select></div><div class="ff"><label>Produits</label><div class="cg">${PRODUCTS.map(p=>`<label class="cl"><input type="checkbox" value="${p}"> ${p}</label>`).join('')}</div></div><div class="g2"><div class="ff"><label>R1 Date</label><input type="date" id="fr1d"></div><div class="ff"><label>R1 Heure</label><input type="time" id="fr1h"></div></div><div class="ff"><label>Rappel</label><input type="date" id="frp"></div><div class="ff"><label>Notes</label><textarea id="fno" style="width:100%;font-family:inherit;font-size:12px;padding:7px;border-radius:8px;border:0.5px solid var(--bdr-md);background:var(--bg-card);color:var(--text);min-height:50px"></textarea></div><div class="ma"><button class="btn btn-o" onclick="closeModal()">Annuler</button><button class="btn btn-g" onclick="saveNew()">Enregistrer</button></div>`);}
